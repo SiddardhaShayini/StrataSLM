@@ -33,7 +33,7 @@ flowchart TB
 
 | Subsystem | Files | Responsibilities & Design |
 |---|---|---|
-| **Config & CLI** | `config.py`, `cli.py` | Lazy-import CLI keeping startup `< 300 ms`; normalizes `OLLAMA_HOST`; exposes `doctor`, `run`, `serve`, `profile`, `bench {threads,cold-start,eval,inference}`. |
+| **Config & CLI** | `config.py`, `cli.py` | Lazy-import CLI keeping startup `< 300 ms`; normalizes `OLLAMA_HOST`; exposes `doctor`, `run`, `serve`, `profile`, `models fetch-minilm`, `bench {threads,cold-start,eval,inference,embedders}`. |
 | **Resource Governor** | `governor/{hardware,resource_governor}.py` | Win32 `GetLogicalProcessorInformationEx` hybrid P/E-core topology probe + `psutil` RSS telemetry; 3-stage hysteresis (`GREEN`, `YELLOW`, `RED`) that pauses background consolidation, trims caches, and sheds uncached requests under OOM pressure. |
 | **Inference Engine** | `inference/{client,tool_pruner,prompt,cache,router,engine}.py` | Priority single-flight gate (`RequestPriority`: `HIGH`, `NORMAL`, `BACKGROUND`), concurrent identical request coalescing (`asyncio.Future`), BM25 top-$k$ alphabetical tool pruning, canonical prefix-first `ContextBudget` prompt packer, `L1ExactCache` (`L1_MEM` + `L1_SQLITE`), `L2SemanticCache` (`sqlite-vec` cosine + Python fallback), and adaptive `think` router. |
 | **Reliable Agents** | `agents/{schema,policy,journal,sandbox,runtime}.py` | Zero-LLM JSON sanitizer + max-2 Pydantic repair loop; pre-action policy interceptor & `CaMeL`-style untrusted taint tracking; Win32 Job Object subprocess isolation; SQLite step journal (`idempotency_key` replay + Saga compensators); recoverable `READ`/`COMPUTE` error feedback; automatic procedural skill distillation (`save_skill` / `match_skill`). |

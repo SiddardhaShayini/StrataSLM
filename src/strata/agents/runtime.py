@@ -37,7 +37,7 @@ AGENT_SYSTEM_PROMPT = """You are StrataSLM Agent. Respond ONLY with a valid JSON
   "arguments": { ... tool args if decision == call_tool else {} },
   "final_answer": "concise final answer if decision == final_answer else null"
 }
-Never invent tool names. Stop with decision="final_answer" once the goal is answered."""
+Never invent tool names or repeat an identical tool call. Stop with decision="final_answer" once the goal is answered."""
 
 
 class AgentActionDecision(BaseModel):
@@ -145,6 +145,7 @@ class DeterministicAgentRuntime:
                 record.state.get("context_trust", TrustLevel.TRUSTED_USER.value)
             )
             seen_signatures: list[str] = list(record.state.get("seen_signatures") or [])
+            nudged_signatures: set[str] = set(record.state.get("nudged_signatures") or [])
         else:
             record = self.journal.create_run(
                 goal,
@@ -152,6 +153,7 @@ class DeterministicAgentRuntime:
                     "history": [],
                     "context_trust": TrustLevel.TRUSTED_USER.value,
                     "seen_signatures": [],
+                    "nudged_signatures": [],
                 },
             )
             run_id = record.run_id
@@ -159,6 +161,7 @@ class DeterministicAgentRuntime:
             history = []
             context_trust = TrustLevel.TRUSTED_USER
             seen_signatures = []
+            nudged_signatures = set()
 
         executed_for_saga: list[tuple[RegisteredTool, dict[str, Any], Any]] = []
         consecutive_errors = 0
@@ -299,9 +302,34 @@ class DeterministicAgentRuntime:
                 step_idx += 1
                 continue
 
-            # Loop guard: halt if identical tool+args repeats immediately
+            # Loop guard: allow 1 soft nudge before halting on repeated identical tool+args
             sig = self._call_signature(tool_name, action.arguments)
             if seen_signatures and seen_signatures[-1] == sig:
+                if sig not in nudged_signatures:
+                    nudged_signatures.add(sig)
+                    history.append(
+                        {
+                            "role": "tool",
+                            "content": (
+                                f"[{tool_name}] Already executed with identical arguments. "
+                                "Use the observation above and call a different tool or return decision='final_answer'."
+                            ),
+                        }
+                    )
+                    self.journal.checkpoint_run(
+                        run_id,
+                        status=RunStatus.RUNNING,
+                        current_state=AgentPhase.PLAN,
+                        step_index=step_idx + 1,
+                        state={
+                            "history": history,
+                            "context_trust": context_trust.value,
+                            "seen_signatures": seen_signatures,
+                            "nudged_signatures": sorted(nudged_signatures),
+                        },
+                    )
+                    step_idx += 1
+                    continue
                 self.journal.checkpoint_run(
                     run_id,
                     status=RunStatus.HALTED,
@@ -311,6 +339,7 @@ class DeterministicAgentRuntime:
                         "history": history,
                         "context_trust": context_trust.value,
                         "seen_signatures": seen_signatures,
+                        "nudged_signatures": sorted(nudged_signatures),
                     },
                 )
                 return AgentRunResult(

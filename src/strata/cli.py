@@ -11,9 +11,16 @@ from typing import Sequence
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from strata import __version__
+
     parser = argparse.ArgumentParser(
         prog="strata",
         description="StrataSLM: Featherweight local AI runtime & cognitive memory engine",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"StrataSLM {__version__}",
     )
     parser.add_argument(
         "--host",

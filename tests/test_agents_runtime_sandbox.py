@@ -108,7 +108,14 @@ async def test_agent_runtime_executes_tool_and_commits(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_agent_runtime_loop_guard_and_taint_block_and_saga_rollback(tmp_path: Path) -> None:
-    # 1. Loop guard test
+    # 1. Loop guard test (nudges once without re-executing, halts on persistent repeat)
+    ping_calls = 0
+
+    def count_ping(args: dict[str, object]) -> str:
+        nonlocal ping_calls
+        ping_calls += 1
+        return "pong"
+
     def loop_handler(request: httpx.Request) -> httpx.Response:
         line = json.dumps(
             {
@@ -125,7 +132,7 @@ async def test_agent_runtime_loop_guard_and_taint_block_and_saga_rollback(tmp_pa
     ping_tool = RegisteredTool(
         spec=ToolSpec("ping", "Ping"),
         capability=Capability.READ,
-        handler=lambda args: "pong",
+        handler=count_ping,
     )
 
     cfg = StrataConfig(data_dir=tmp_path)
@@ -135,7 +142,37 @@ async def test_agent_runtime_loop_guard_and_taint_block_and_saga_rollback(tmp_pa
             rt = DeterministicAgentRuntime(engine, [ping_tool], max_steps=5)
             res = await rt.run("Loop test")
             assert res.status == RunStatus.HALTED
+            assert ping_calls == 1
+            assert res.steps_executed == 2
             assert "Loop guard" in (res.halt_reason or "")
+
+    # 1b. Soft-nudge recovery: 1 accidental repeat nudged -> final_answer completes cleanly
+    recover_seq = iter(
+        [
+            '{"decision":"call_tool","tool_name":"ping","arguments":{"x":2}}',
+            '{"decision":"call_tool","tool_name":"ping","arguments":{"x":2}}',
+            '{"decision":"final_answer","final_answer":"Recovered after nudge"}',
+        ]
+    )
+
+    def recover_loop_handler(request: httpx.Request) -> httpx.Response:
+        line = json.dumps(
+            {
+                "model": "qwen3:1.7b",
+                "message": {"role": "assistant", "content": next(recover_seq)},
+                "done": True,
+            }
+        )
+        return httpx.Response(200, content=(line + "\n").encode("utf-8"))
+
+    with StrataDB(tmp_path / "loop_recover.db") as db:
+        async with OllamaClient(transport=httpx.MockTransport(recover_loop_handler)) as client:
+            engine = InferenceEngine(cfg, db=db, client=client)
+            rt = DeterministicAgentRuntime(engine, [ping_tool], max_steps=5)
+            res_rec = await rt.run("Recover repeat test")
+            assert res_rec.status == RunStatus.COMPLETED
+            assert res_rec.final_answer == "Recovered after nudge"
+            assert ping_calls == 2
 
     # 2. Saga rollback + CaMeL untrusted taint block test
     rolled_back_items: list[str] = []

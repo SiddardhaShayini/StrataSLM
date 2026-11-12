@@ -1,5 +1,7 @@
 # StrataSLM
 
+[![StrataSLM CI](https://github.com/SiddardhaShayini/StrataSLM/actions/workflows/ci.yml/badge.svg)](https://github.com/SiddardhaShayini/StrataSLM/actions/workflows/ci.yml)
+
 > *System Intelligence Over Model Scale* — a featherweight, deterministic local AI runtime & cognitive memory engine engineered for an 8 GB RAM, CPU-only laptop.
 
 See [PLAN.md](PLAN.md) for the master blueprint, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design, [docs/PERFORMANCE_REPORT.md](docs/PERFORMANCE_REPORT.md) for measured 8 GB benchmarks, and [PROJECT_MEMORY.md](PROJECT_MEMORY.md) for continuity logs and hardware constraints.
@@ -47,13 +49,6 @@ $env:OLLAMA_KV_CACHE_TYPE = "q8_0"
 $env:OLLAMA_FLASH_ATTENTION = "1"
 ```
 
-## Run Tests
-
-```powershell
-uv run pytest -v
-```
-
-
 ## Optional ONNX MiniLM Embeddings (ADR-002)
 
 Strata defaults cleanly to zero-footprint 128-dim character n-gram embeddings and automatically upgrades to quantized in-process 384-dim `all-MiniLM-L6-v2` (ONNX Runtime) when weights are present:
@@ -66,15 +61,18 @@ uv run strata bench embedders --require-onnx --save
 
 Weights are stored locally in `.strata/models/all-MiniLM-L6-v2/` (gitignored).
 
-## Documentation & Verification
+## Verification & Benchmarks
+
+```powershell
+uv run pytest -v
+uv run strata bench eval --save
+uv run strata bench cold-start --runs 5
+uv run strata profile --save
+```
+
+## Documentation
 
 - [Architecture & ADRs](docs/ARCHITECTURE.md)
 - [Performance & 8 GB Safety Report](docs/PERFORMANCE_REPORT.md)
 - [Master Plan](PLAN.md)
 - [Project Memory](PROJECT_MEMORY.md)
-
-```powershell
-uv run pytest -v
-uv run strata bench eval --save
-uv run strata profile --save
-```

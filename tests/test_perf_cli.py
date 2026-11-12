@@ -115,6 +115,10 @@ def test_cli_parser() -> None:
     assert args7.require_onnx is True
     assert args7.save is True
 
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+    assert exc_info.value.code == 0
+
 
 def test_eval_embedder_ab_missing_weights_graceful(tmp_path: Path) -> None:
     from strata.perf.evals import eval_embedder_ab
